@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SniperAI Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./css/dashboard.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-emoji">🎯</span>
+    <div>
+      <div class="brand-title">SniperAI</div>
+      <div class="brand-sub" id="netLabel">DEVNET · SIMULATION</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div id="modeBadge" class="mode-badge mode-sim" title="Modo de execução atual do bot">MODO ATUAL: SIMULADOR</div>
+    <div class="env-switch" id="envSwitch" title="Escolha o ambiente do bot">
+      <button class="env-btn env-sim active" id="envSimBtn">🧪 Simulado</button>
+      <button class="env-btn env-real" id="envRealBtn">⚡ Real</button>
+    </div>
+    <button class="btn-ghost" id="refreshWalletBtn" title="Atualizar saldo">↻</button>
+  </div>
+</header>
+
+<div id="envBanner" class="env-banner hidden">
+  <strong>⚠️ AMBIENTE REAL</strong>
+  <span>Transações reais na mainnet. Para operar, conecte a carteira com a <em>chave privada</em> (o modo leitura Phantom não assina swaps). Certifique-se de ter saldo e rede corretos.</span>
+</div>
+
+<main class="layout">
+
+  <!-- COLUNA ESQUERDA -->
+  <section class="col-left">
+    <div class="card">
+      <h2 class="card-title"><span class="dot"></span>Carteira Solana</h2>
+      <div id="walletDisconnected">
+        <p class="muted">Conecte sua carteira para começar.</p>
+        <div class="wallet-btns">
+          <button class="btn btn-primary" id="connectPhantomBtn">🟣 Phantom</button>
+          <button class="btn btn-secondary" id="connectSolflareBtn">🔥 Solflare</button>
+        </div>
+        <div class="divider"><span>ou chave local (server-side)</span></div>
+        <details class="details">
+          <summary>Usar chave privada (base58 / JSON array)</summary>
+          <p class="muted small">⚠️ A chave fica apenas no processo Node local. NUNCA use a carteira principal em LIVE — crie uma carteira de teste/devnet.</p>
+          <textarea id="secretInput" rows="4" placeholder='base58 ou [1,2,3,...64]'></textarea>
+          <button class="btn btn-primary" id="connectSecretBtn">Carregar no bot</button>
+        </details>
+      </div>
+      <div id="walletConnected" class="hidden">
+        <div class="wallet-row">
+          <span class="label">Endereço</span>
+          <span class="value mono" id="walletAddr">—</span>
+        </div>
+        <div class="wallet-row">
+          <span class="label">Saldo</span>
+          <span class="value balance" id="walletBalance">0.0000 SOL</span>
+        </div>
+        <div class="tokens-wrap">
+          <div class="label">Tokens SPL</div>
+          <div id="tokensList" class="tokens-list"><span class="muted">Nenhum</span></div>
+        </div>
+        <button class="btn btn-danger" id="disconnectBtn">Desconectar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title"><span class="dot dot-blue"></span>Controle do Bot</h2>
+      <div class="bot-grid">
+        <button class="btn btn-primary btn-lg" id="startBtn">▶ Iniciar</button>
+        <button class="btn btn-danger btn-lg" id="stopBtn" disabled>■ Parar</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div id="statState" class="stat-val">idle</div><div class="stat-lbl"><span id="wsDot" class="ws-dot"></span> Estado</div></div>
+        <div class="stat"><div id="statCycles" class="stat-val">0</div><div class="stat-lbl">Trades/Jumps</div></div>
+        <div class="stat"><div id="statTrades" class="stat-val">0</div><div class="stat-lbl">Monitorados</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COLUNA DIREITA -->
+  <section class="col-right">
+    <div class="config-bar">
+      <h2 class="card-title-inline">⚙️ Configurações de Trading</h2>
+      <button class="btn btn-primary btn-sm" id="saveConfigBtn">Salvar</button>
+    </div>
+    <div class="config-grid">
+      <div class="cfg">
+        <label>Valor de compra (SOL)</label>
+        <input type="number" id="cfgBuy" step="0.001" min="0.001">
+      </div>
+      <div class="cfg">
+        <label>Take Profit (%)</label>
+        <input type="number" id="cfgSellTrigger" step="1" min="0">
+      </div>
+      <div class="cfg">
+        <label>Stop Loss (%)</label>
+        <input type="number" id="cfgStopLoss" step="1" min="0">
+      </div>
+      <div class="cfg">
+        <label>Slippage (bps)</label>
+        <input type="number" id="cfgSlippage" step="50" min="0">
+      </div>
+      <div class="cfg">
+        <label>BC máximo p/ comprar (%)</label>
+        <input type="number" id="cfgMaxBC" step="1" min="0" max="100">
+      </div>
+      <div class="cfg">
+        <label>Prioridade fee (lamports)</label>
+        <input type="number" id="cfgFee" step="1000" min="0">
+      </div>
+      <div class="cfg cfg-full">
+        <label>RPC URL (opcional)</label>
+        <input type="text" id="cfgRpc" placeholder="https://...">
+      </div>
+      <div class="cfg cfg-full">
+        <label class="switch">
+          <input type="checkbox" id="autoSellToggle" checked>
+          <span class="slider"></span>
+          <span class="switch-label">Vender ao detectar compras de outros (auto-sell on buy)</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <h2 class="card-title"><span class="dot"></span>Evolução de Saldo <span id="equityLabel" class="equity-label"></span></h2>
+      <div class="chart-wrap">
+        <canvas id="equityChart"></canvas>
+      </div>
+      <div class="pnl-legend">
+        <span><i class="lg lg-green"></i> Lucro</span>
+        <span><i class="lg lg-red"></i> Prejuízo</span>
+        <span id="pnlTotal">P&L: 0.0000 SOL</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<section class="log-section">
+  <div class="log-bar">
+    <h2 class="card-title-inline">📜 Log do Bot <span id="logCount" class="text-muted small"></span></h2>
+    <div class="log-controls">
+      <button class="btn btn-ghost btn-sm" id="clearLogBtn">Limpar</button>
+      <button class="btn btn-ghost btn-sm" id="autoscrollBtn" data-on="1">Auto-scroll: ON</button>
+    </div>
+  </div>
+  <div id="logBox" class="log-box"></div>
+</section>
+
+<footer class="footer">
+  <p>🎯 SniperAI Dashboard · Chave privada NUNCA sai do seu PC · Use apenas carteiras de teste</p>
+</footer>
+
+<!-- Modal de confirmação do modo REAL -->
+<div id="confirmModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>⚠️ ATENÇÃO</h2>
+    <p>Você está prestes a operar <strong>REAL</strong>.</p>
+    <p class="muted">Isso pode gastar SOL, pagar taxas e executar ordens <strong>reais</strong> na Solana mainnet.</p>
+    <label for="confirmInput">Para confirmar, digite: <code>REAL</code></label>
+    <input type="text" id="confirmInput" placeholder="REAL" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="cancelRealBtn">Cancelar</button>
+      <button class="btn btn-danger" id="confirmRealBtn" disabled>Confirmar REAL</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script type="module" src="./js/dashboard.js"></script>
+</body>
+</html>
