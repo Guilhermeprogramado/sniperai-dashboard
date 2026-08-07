@@ -1,0 +1,37 @@
+﻿services:
+  - type: web
+    name: sniperai-dashboard
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: AGENT_MODE
+        value: paper_mainnet
+      - key: USE_DEVNET
+        value: "false"
+      - key: ALLOW_REAL_MODE
+        value: "false"
+      - key: ENABLE_LIVE_TRADING
+        value: "false"
+      - key: I_UNDERSTAND_LIVE_RISK
+        value: "NO"
+      - key: PUMP_FUN_PROGRAM
+        value: 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
+      - key: MAINNET_RPC_URL
+        sync: false
+      - key: MAINNET_WS_URL
+        sync: false
+      - key: BUY_AMOUNT_SOL
+        value: "0.015"
+      - key: MAX_SOL_PER_TRADE
+        value: "0.05"
+      - key: MAX_DAILY_LOSS_SOL
+        value: "0.20"
+      - key: MAX_OPEN_POSITIONS
+        value: "3"
+      - key: PAPER_INITIAL_SOL
+        value: "1.0"
+      - key: COMMITMENT
+        value: confirmed
