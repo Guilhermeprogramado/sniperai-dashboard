@@ -79,7 +79,9 @@ const statusPayload = () => ({
   profitLoss: bot.profitLoss, equity: bot.equity, wsConnected: bot.wsConnected, monitored: bot.monitoredTokens.size,
   history: bot.tradeHistory,
   network: bot.config.useDevnet ? 'DEVNET' : 'MAINNET',
-  mode: bot.config.mode || (bot.config.simulationMode ? 'mock' : 'paper_mainnet')
+  mode: bot.config.mode || (bot.config.simulationMode ? 'mock' : 'paper_mainnet'),
+  executionMode: bot.executionMode,
+  sendTransactions: bot.sendTransactions
 });
 
 bot.emit = (type, data) => {

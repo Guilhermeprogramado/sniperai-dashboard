@@ -381,55 +381,64 @@ export class SniperBot {
     return null;
   };
 
-  isNewPumpToken = async (signature) => {
+isNewPumpToken = async (signature) => {
+    const ok = (t) => t && t.uiTokenAmount && Number(t.uiTokenAmount.uiAmount) > 0;
     try {
       const tx = await this.connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-      if (!tx?.meta?.logMessages) return null;
-      const hasCreate = tx.meta.logMessages.some(l => l.includes('Create') || l.includes('initialize') || l.includes('CreateEvent'));
-      if (!hasCreate) return null;
-      const keys = tx.transaction.message.getAccountKeys();
-      for (const key of keys) {
-        const pk = key.toString();
-        if (pk.length === 44 && pk !== new PublicKey(this.config.pumpFunProgram).toString()) {
-          const info = await this.getTokenInfo(pk);
-          if (info?.supply && BigInt(info.supply) > 0n && BigInt(info.supply) < 1_000_000_000_000_000n) return pk;
-        }
+      if (!tx) return null;
+      const pre = new Set((tx.meta.preTokenBalances || [])
+        .filter(t => t.mint !== WRAPPED_SOL)
+        .map(t => t.mint));
+      const post = (tx.meta.postTokenBalances || []).filter(t => t.mint !== WRAPPED_SOL);
+      if (!post.length) return null;
+      // 1) PRIORIDADE: mint que aparece AGORA mas não existia antes => launch novo
+      for (const b of post) {
+        if (!pre.has(b.mint) && ok(b)) return b.mint;
       }
+      // 2) fallback: token ativo na tx (válido para simulação/paper)
+      const active = post.find(ok);
+      return active ? active.mint : null;
     } catch (e) {}
     return null;
   };
 
   startTokenMonitor(handler) {
     const pidStr = this.config.pumpFunProgram;
-    this.log('Iniciando monitoramento on-chain da Pump.fun...', 'sniper');
+    this.log('Iniciando monitoramento on-chain da Pump.fun (polling)...', 'sniper');
     this.log(`Program: ${pidStr} | RPC: ${this.rpcUrl()}`, 'info');
-    this.ws = new WebSocket(this.wsUrl());
-    this.ws.on('open', () => {
-      this.wsConnected = true;
-      this.log('WebSocket RPC conectado!', 'info');
-      this.ws.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'logsSubscribe', params: [{ mentions: [pidStr, ''].filter(Boolean) }, { commitment: 'confirmed' }] }));
-      this.emitStatus();
-    });
-    this.ws.on('message', async (data) => {
+
+    let lastSig = null;
+    const seen = new Set();
+    const sleep2 = (ms) => new Promise(r => setTimeout(r, ms));
+
+    const poll = async () => {
+      if (!this.running) { this.wsConnected = false; this.emitStatus(); return; }
       try {
-        const msg = JSON.parse(data.toString());
-        if (msg.method === 'logsNotification') {
-          const sig = msg.params.result.value.signature;
-          const mint = await this.isNewPumpToken(sig);
-          if (mint && !this.monitoredTokens.has(mint)) {
-            this.log(`🎯 NOVO TOKEN DETECTADO: ${mint}`, 'sniper');
-            this.logDecision({ mint, side: 'entry', signal: 'onchain-create', slot: msg.params.result.context?.slot });
-            await handler?.(mint);
-          }
+        const pid = new PublicKey(pidStr);
+        const sigs = (await this.connection.getSignaturesForAddress(pid, { limit: 5 })).map(s => s.signature);
+        if (sigs[0]) this.wsConnected = true;
+        for (const sig of sigs) {
+          if (seen.has(sig)) continue;
+          seen.add(sig);
+          try {
+            const mint = await this.isNewPumpToken(sig);
+            if (mint && !this.monitoredTokens.has(mint)) {
+              this.log(`🎯 TOKEN DETECTADO: ${mint}`, 'sniper');
+              this.logDecision({ mint, side: 'entry', signal: 'onchain-detect', mint });
+              await handler?.(mint);
+              await sleep2(500);
+            }
+          } catch (e) {}
+          await sleep2(250);
         }
-      } catch (e) {}
-    });
-    this.ws.on('error', (err) => { this.log(`WS erro: ${err.message}`, 'error'); this.wsConnected = false; });
-    this.ws.on('close', () => {
-      this.log('WebSocket fechado. Reconectando em 5s...', 'warn');
-      this.wsConnected = false;
-      if (this.running) setTimeout(() => this.startTokenMonitor(handler), 5000);
-    });
+        this.emitStatus();
+      } catch (e) {
+        this.log(`Erro no polling: ${e.message}`, 'error');
+      }
+    };
+
+    this.monitorHandle = setInterval(poll, this.config.monitorIntervalMs);
+    this.wsConnected = false;
   }
 
   // ============================================================
@@ -636,6 +645,7 @@ export class SniperBot {
     this.running = false;
     this.setState('idle');
     if (this.ws) { try { this.ws.close(); } catch (e) {} this.ws = null; }
+    if (this.monitorHandle) { clearInterval(this.monitorHandle); this.monitorHandle = null; }
     this.wsConnected = false;
     this.log('Bot parado.', 'warn');
     this.emitStatus();
